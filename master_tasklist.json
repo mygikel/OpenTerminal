@@ -42,5 +42,17 @@
     ],
     "category": "functional",
     "passes": false
+  },
+  {
+    "description": "Rebalance Sharpe consistency and adjustable shrink: the optimiser and the displayed 'now' and 'target' Sharpe values must use the same shrunk-return basis so target is never lower than now, the shrink amount (0-100%, share of each holding's average return pulled toward the portfolio average) is adjustable in the widget, and the plain historical Sharpe of the current weights is still shown.",
+    "steps": [
+      "Add expectedSharpe and a shrink parameter to maxSharpeWeights in server/src/analytics.ts, driven by one shared scoring function",
+      "Add a 'shrink' query parameter (0 to 1, default 0.5) to GET /api/portfolios/:id/risk and return historicalSharpe, currentSharpe, targetSharpe and shrink",
+      "Add a Shrink % input to RiskWidget and show Historical Sharpe, then Expected now -> target",
+      "Run `npm test` in server/ and confirm the target-never-below-start test passes for shrink 0, 0.25, 0.5, 0.75 and 1",
+      "Open the RISK widget on a portfolio with 3+ positions, change Shrink and verify the target Sharpe is never below the 'now' Sharpe"
+    ],
+    "category": "functional",
+    "passes": false
   }
 ]

@@ -81,25 +81,35 @@ function capWeights(w: number[], cap: number): number[] {
 export type Optimised = { weights: number[]; sharpe: number };
 
 /**
- * Long-only max-Sharpe weights, each capped at `cap`.
- * Means are shrunk halfway to the cross-asset average: raw sample means make
- * max-Sharpe pile into last year's winner, and the result is in-sample either way.
+ * Sharpe of a weight vector under shrunk return estimates: each asset's mean
+ * return moves `shrink` (0..1) of the way to the cross-asset average, because raw
+ * one-year means are noisy and max-Sharpe on them piles into last year's winner.
+ * shrink=0 is plain history. One scorer drives both the optimiser and the Sharpe
+ * values the widget shows, so the target is never scored lower than the start.
  */
-export function maxSharpeWeights(rets: number[][], start: number[], riskFree = 0.04, cap = 0.4): Optimised {
-  const n = rets.length;
-  const c = Math.max(cap, 1 / n + 1e-9);
+function makeScore(rets: number[][], riskFree: number, shrink: number) {
   const mu = rets.map((r) => mean(r));
   const grand = mean(mu);
-  const mus = mu.map((m) => 0.5 * m + 0.5 * grand);
-  const cov = rets.map((a, i) =>
-    rets.map((b, j) => mean(a.map((x, t) => (x - mu[i]) * (b[t] - mu[j]))))
-  );
+  const mus = mu.map((m) => (1 - shrink) * m + shrink * grand);
+  const cov = rets.map((a, i) => rets.map((b, j) => mean(a.map((x, t) => (x - mu[i]) * (b[t] - mu[j])))));
   const rfd = riskFree / TRADING_DAYS;
-  const score = (w: number[]) => {
+  return (w: number[]) => {
     const ret = w.reduce((s, x, i) => s + x * mus[i], 0) - rfd;
     const v = w.reduce((s, x, i) => s + x * w.reduce((t, y, j) => t + y * cov[i][j], 0), 0);
     return v > 0 ? (ret / Math.sqrt(v)) * Math.sqrt(TRADING_DAYS) : -Infinity;
   };
+}
+
+export function expectedSharpe(rets: number[][], weights: number[], riskFree = 0.04, shrink = 0.5): number | null {
+  const s = makeScore(rets, riskFree, shrink)(weights);
+  return Number.isFinite(s) ? s : null;
+}
+
+/** Long-only max-Sharpe weights, each capped at `cap`, scored on shrunk returns (see makeScore). */
+export function maxSharpeWeights(rets: number[][], start: number[], riskFree = 0.04, cap = 0.4, shrink = 0.5): Optimised {
+  const n = rets.length;
+  const c = Math.max(cap, 1 / n + 1e-9);
+  const score = makeScore(rets, riskFree, shrink);
 
   const rnd = mulberry32(42);
   let best = capWeights(start, c);

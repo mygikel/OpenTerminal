@@ -2,7 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { mapWithConcurrency } from "../concurrency.js";
-import { alignCloses, maxSharpeWeights, portfolioReturns, returnsFromCloses, sharpe } from "../analytics.js";
+import {
+  alignCloses,
+  expectedSharpe,
+  maxSharpeWeights,
+  portfolioReturns,
+  returnsFromCloses,
+  sharpe,
+} from "../analytics.js";
 import { riskFree, yearBars } from "./risk.js";
 
 export const portfolioRouter = Router();
@@ -108,6 +115,8 @@ portfolioRouter.get("/:id/risk", async (req, res) => {
   const open = positionsFor(req.params.id).filter((p) => p.quantity > 0);
   if (open.length < 2) return res.json({ message: "Need at least 2 open positions to rebalance." });
   const cap = Math.min(1, Math.max(0.05, Number(req.query.cap ?? 0.4) || 0.4));
+  const shrinkRaw = Number(req.query.shrink ?? 0.5);
+  const shrink = Number.isFinite(shrinkRaw) ? Math.min(1, Math.max(0, shrinkRaw)) : 0.5;
 
   const rf = await riskFree();
   const fetched = await mapWithConcurrency(open, 4, async (p) => {
@@ -129,16 +138,19 @@ portfolioRouter.get("/:id/risk", async (req, res) => {
   const value = ok.map((x, i) => x.p.quantity * price[i]);
   const total = value.reduce((a, b) => a + b, 0);
   const current = value.map((v) => v / total);
-  const target = maxSharpeWeights(rets, current, rf, cap).weights;
-  const sharpeOf = (w: number[]) => sharpe(portfolioReturns(rets, w), rf);
+  const target = maxSharpeWeights(rets, current, rf, cap, shrink).weights;
 
   res.json({
     riskFree: rf,
     cap,
+    shrink,
     skipped,
     totalValue: total,
-    currentSharpe: sharpeOf(current),
-    targetSharpe: sharpeOf(target),
+    // plain one-year history of the current weights
+    historicalSharpe: sharpe(portfolioReturns(rets, current), rf),
+    // same shrunk-return basis for both, so target >= current
+    currentSharpe: expectedSharpe(rets, current, rf, shrink),
+    targetSharpe: expectedSharpe(rets, target, rf, shrink),
     rows: ok.map((x, i) => ({
       symbol: x.p.symbol,
       price: price[i],

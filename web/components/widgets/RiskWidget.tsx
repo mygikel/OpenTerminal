@@ -22,8 +22,10 @@ type PortfolioRisk =
   | {
       riskFree: number;
       cap: number;
+      shrink: number;
       skipped: string[];
       totalValue: number;
+      historicalSharpe: number | null;
       currentSharpe: number | null;
       targetSharpe: number | null;
       rows: Array<{ symbol: string; price: number; currentWeight: number; targetWeight: number; tradeShares: number }>;
@@ -48,6 +50,7 @@ export default function RiskWidget() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [cap, setCap] = useState(40);
+  const [shrink, setShrink] = useState(50);
 
   const { data: tickers, isFetching } = useQuery({
     queryKey: ["risk", watchlist.join(",")],
@@ -62,8 +65,8 @@ export default function RiskWidget() {
   });
   const pid = portfolioId ?? portfolios[0]?.id;
   const { data: pf, isFetching: pfLoading } = useQuery({
-    queryKey: ["portfolio-risk", pid, cap],
-    queryFn: () => apiGet<PortfolioRisk>(`/api/portfolios/${pid}/risk?cap=${cap / 100}`),
+    queryKey: ["portfolio-risk", pid, cap, shrink],
+    queryFn: () => apiGet<PortfolioRisk>(`/api/portfolios/${pid}/risk?cap=${cap / 100}&shrink=${shrink / 100}`),
     enabled: !!pid,
     refetchInterval: 300_000,
   });
@@ -149,6 +152,10 @@ export default function RiskWidget() {
           Max/position{" "}
           <input className="w-16" type="number" min={5} max={100} value={cap} onChange={(e) => setCap(Math.min(100, Math.max(5, Number(e.target.value) || 40)))} />%
         </label>
+        <label className="dim" title="0% = trust last year's returns as-is; 100% = assume every holding has the same expected return">
+          Shrink{" "}
+          <input className="w-16" type="number" min={0} max={100} value={shrink} onChange={(e) => setShrink(Math.min(100, Math.max(0, Number(e.target.value) || 0)))} />%
+        </label>
         {pfLoading && <span className="dim">updating</span>}
       </div>
 
@@ -156,7 +163,9 @@ export default function RiskWidget() {
       {pf && "rows" in pf && (
         <>
           <div className="p-1">
-            Sharpe <span className="amber">{fmt(pf.currentSharpe)}</span> → target{" "}
+            <span className="dim">Historical</span> <span className="amber">{fmt(pf.historicalSharpe)}</span>
+            <span className="dim"> · Expected ({Math.round(pf.shrink * 100)}% shrink)</span>{" "}
+            <span className="amber">{fmt(pf.currentSharpe)}</span> → target{" "}
             <span className="up">{fmt(pf.targetSharpe)}</span>
             {pf.skipped.length > 0 && <span className="dim"> · skipped {pf.skipped.join(", ")}</span>}
           </div>
@@ -179,8 +188,9 @@ export default function RiskWidget() {
             </tbody>
           </table>
           <div className="dim p-1 text-[10px]">
-            In-sample on ~1y of daily history, long-only, expected returns shrunk 50% toward the average. A
-            starting point, not a forecast or advice.
+            ~1y of daily history, long-only. "Expected" Sharpe uses each holding's return shrunk {Math.round(pf.shrink * 100)}%
+            toward the portfolio average, for both now and target. Historical is the plain past-year figure for your
+            current weights. A starting point, not a forecast or advice.
           </div>
         </>
       )}

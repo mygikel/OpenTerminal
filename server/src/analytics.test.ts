@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   alignCloses,
+  expectedSharpe,
   ma200State,
   maxSharpeWeights,
   portfolioReturns,
@@ -67,12 +68,24 @@ describe("maxSharpeWeights", () => {
       expect(w).toBeLessThanOrEqual(0.5 + 1e-9);
     }
   });
-  it("does not do worse than the starting weights", () => {
+  it("target is never scored below the start, at any shrink, on the shared scorer", () => {
     const start = [0.1, 0.8, 0.1];
-    const best = maxSharpeWeights(rets, start, 0.04, 1);
-    const sStart = sharpe(portfolioReturns(rets, start), 0.04)!;
-    const sBest = sharpe(portfolioReturns(rets, best.weights), 0.04)!;
-    expect(sBest).toBeGreaterThanOrEqual(sStart - 0.05); // shrunk means: allow small slack
+    for (const shrink of [0, 0.25, 0.5, 0.75, 1]) {
+      const best = maxSharpeWeights(rets, start, 0.04, 1, shrink);
+      expect(expectedSharpe(rets, best.weights, 0.04, shrink)!).toBeGreaterThanOrEqual(
+        expectedSharpe(rets, start, 0.04, shrink)! - 1e-9
+      );
+    }
+  });
+  it("shrink=0 scores exactly the plain historical Sharpe", () => {
+    const w = [0.2, 0.5, 0.3];
+    expect(expectedSharpe(rets, w, 0.04, 0)!).toBeCloseTo(sharpe(portfolioReturns(rets, w), 0.04)!, 9);
+  });
+  it("more shrink moves weight away from the highest-return asset", () => {
+    const start = [1 / 3, 1 / 3, 1 / 3];
+    const raw = maxSharpeWeights(rets, start, 0.04, 1, 0).weights[0];
+    const shrunk = maxSharpeWeights(rets, start, 0.04, 1, 1).weights[0];
+    expect(shrunk).toBeLessThan(raw);
   });
   it("still works when the cap is infeasible for 2 assets", () => {
     const { weights } = maxSharpeWeights(rets.slice(0, 2), [0.5, 0.5], 0.04, 0.1);
