@@ -1,0 +1,46 @@
+[
+  {
+    "description": "Pure analytics module: annualised Sharpe ratio from a close-price series, 200-day moving average with above/below state and cross detection, portfolio return series from weights, and a capped long-only max-Sharpe optimiser.",
+    "steps": [
+      "Add server/src/analytics.ts with sharpe, ma200State, portfolioReturns and maxSharpeWeights functions",
+      "Add server/src/analytics.test.ts covering a known-Sharpe series, an up-cross, a down-cross, a flat series (zero volatility) and optimiser weight constraints",
+      "Run `npm test` in server/ and confirm all analytics tests pass"
+    ],
+    "category": "functional",
+    "passes": false
+  },
+  {
+    "description": "Per-ticker risk endpoint: GET /api/risk?symbols=A,B returns, for each symbol, the 1-year Sharpe ratio, last price, 200-day MA, percent distance from the MA, and whether price just crossed above or below the MA on the latest bar.",
+    "steps": [
+      "Export a getHistory(symbol, range) helper from server/src/routes/market.ts (reuses existing cache and provider fallback)",
+      "Add server/src/routes/risk.ts with the /risk route and mount it under /api in server/src/index.ts",
+      "Call /api/risk?symbols=AAPL,MSFT and verify each row has sharpe, price, ma200, pctVsMa, side and crossed fields",
+      "Verify a symbol with fewer than 200 daily bars returns ma200 null instead of an error"
+    ],
+    "category": "functional",
+    "passes": false
+  },
+  {
+    "description": "Portfolio risk endpoint: GET /api/portfolios/:id/risk returns the current portfolio Sharpe ratio (weights from current market value), and a suggested rebalance (target weights that maximise Sharpe under a per-position cap, with buy/sell share counts and the resulting in-sample Sharpe).",
+    "steps": [
+      "Extract the positions aggregation in server/src/routes/portfolio.ts into a reusable function",
+      "Add the /:id/risk route using analytics.ts and getHistory",
+      "Create a portfolio with 3+ positions and verify current weights sum to 1, target weights sum to 1 and respect the cap",
+      "Verify a portfolio with fewer than 2 positions returns a clear message instead of a rebalance"
+    ],
+    "category": "functional",
+    "passes": false
+  },
+  {
+    "description": "RISK dashboard widget in the web app: table of tickers with Sharpe and distance to 200MA, a highlighted alert row and browser notification when a ticker crosses or drops through its 200MA, portfolio Sharpe, and a rebalance panel showing current vs target weights and suggested trades.",
+    "steps": [
+      "Add 'risk' to WidgetType, SIZE_BY_TYPE, Workspace WidgetBody and the Sidebar list",
+      "Create web/components/widgets/RiskWidget.tsx that polls /api/risk for the watchlist and /api/portfolios/:id/risk",
+      "Open the app, add the RISK widget from the sidebar and verify the ticker table renders with Sharpe and 200MA columns",
+      "Verify the portfolio Sharpe and rebalance panel render for a portfolio with positions",
+      "Verify a crossed-MA row is highlighted and does not re-notify on every poll"
+    ],
+    "category": "functional",
+    "passes": false
+  }
+]

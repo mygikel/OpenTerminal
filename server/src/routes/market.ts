@@ -227,23 +227,26 @@ marketRouter.get("/quotes", async (req, res) => {
 
 // ---- history / candles ----
 
+/** Cached candles for any symbol; shared by /history and the risk routes. */
+export async function getHistory(symbol: string, rangeKey: string) {
+  const data = await cached(`history:${symbol}:${rangeKey}`, HISTORY_TTL, () =>
+    binance.CRYPTO_SYMBOLS.has(symbol)
+      ? binance.history(symbol, rangeKey)
+      : isVix(symbol)
+      ? vixHistory(rangeKey)
+      : withFallback([
+          ["nasdaq", () => nasdaq.history(symbol, rangeKey)],
+          ["yahoo", () => yahoo.history(symbol, yahooRange(rangeKey).range, yahooRange(rangeKey).interval)],
+          ["stooq", () => stooq.history(symbol)],
+        ])
+  );
+  if (!Array.isArray(data) || data.length === 0) throw new Error("empty history from all providers");
+  return data;
+}
+
 marketRouter.get("/history/:symbol", async (req, res) => {
-  const symbol = req.params.symbol.toUpperCase();
-  const rangeKey = String(req.query.range ?? "6M");
   try {
-    const data = await cached(`history:${symbol}:${rangeKey}`, HISTORY_TTL, () =>
-      binance.CRYPTO_SYMBOLS.has(symbol)
-        ? binance.history(symbol, rangeKey)
-        : isVix(symbol)
-        ? vixHistory(rangeKey)
-        : withFallback([
-            ["nasdaq", () => nasdaq.history(symbol, rangeKey)],
-            ["yahoo", () => yahoo.history(symbol, yahooRange(rangeKey).range, yahooRange(rangeKey).interval)],
-            ["stooq", () => stooq.history(symbol)],
-          ])
-    );
-    if (!Array.isArray(data) || data.length === 0) throw new Error("empty history from all providers");
-    res.json(data);
+    res.json(await getHistory(req.params.symbol.toUpperCase(), String(req.query.range ?? "6M")));
   } catch (err) {
     fail(req, res, err);
   }

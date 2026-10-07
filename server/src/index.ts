@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { marketRouter } from "./routes/market.js";
+import { riskRouter } from "./routes/risk.js";
 import { portfolioRouter } from "./routes/portfolio.js";
 import { aiRouter } from "./routes/ai.js";
 import { allStats } from "./providers/registry.js";
@@ -34,7 +35,7 @@ app.use(express.json());
 // caller could otherwise repeat the multi-provider fan-out in market.ts (up to
 // hundreds of outbound calls per request — see getQuotes) fast enough to get
 // this deployment's IP rate-limited or banned by Nasdaq/Yahoo/Stooq/SEC.
-app.use("/api", rateLimit({ windowMs: 60_000, max: 240 }), marketRouter);
+app.use("/api", rateLimit({ windowMs: 60_000, max: 240 }), marketRouter, riskRouter);
 // Portfolio data and the paid AI endpoint require a shared secret; see auth.ts.
 app.use("/api/portfolios", requireApiKey, portfolioRouter);
 app.use(
